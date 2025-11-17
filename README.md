@@ -1,42 +1,48 @@
-## 项目介绍
+## Redis-Lock
 
-一个简洁的基于 Redis 单节点的分布式锁实现，可以用在多个实例、多个 pods、多个服务之间并发冲突的加锁场景，支持组合锁。
+[中文](README.zh.md)
 
-- 简单：直接拿来用，底层的复杂性都封装好了
-- 轻量：不依赖太多外部设施资源（只需要一个 Redis，和缓存共用也行）
+A small distributed lock built on a single Redis node. Use it to protect resources across multiple instances, pods, or services, and it also supports composite locks.
 
-## 快速上手
+- Simple: ready to use; the low-level complexity is already handled.
+- Lightweight: depends only on one Redis instance (sharing it with your cache is fine).
 
-### 给单个资源加锁（单锁）
+## Quick Start
+
+### Lock a single resource
 
 ```go
-// 初始化一个名为 resource-key 的锁，指定过期时间为 1 小时
+// Initialize a lock named resource-key with a 1 hour expiration
 lock := NewRedisLock(redisClient, "resource-key", time.Hour * 1)
 
-// 堵塞当前协程、直至加锁成功或超时。这里以 5 秒为间隔、不断地尝试加锁，直到加锁成功、或超过 1 分钟报错
+// Keep retrying every 5 seconds until the lock is acquired or it errors out after 1 minute
 err := lock.Lock(time.Second * 5, time.Minute * 1)
 
-// 释放锁
+// Release the lock
 err = lock.Unlock()
 ```
 
-### 同时给多个资源加锁（组合锁）
+### Lock multiple resources at once (lock set)
 
 ```go
-// 初始化一个包含 resource1, resource2, resource3 的组合锁，指定过期时间为 1 小时
+// Initialize a lock set that contains resource1, resource2, resource3 with a 1 hour expiration
 lock := NewRedisLockSet(redisClient, []string{"resource1", "resource2", "resource3"}, time.Hour * 1)
 
-// 堵塞当前协程、直至加锁成功或超时。这里以 5 秒为间隔、不断地尝试加锁，直到加锁成功、或超过 1 分钟报错
+// Keep retrying every 5 seconds until all locks are acquired or it errors out after 1 minute
 err := lock.Lock(time.Second * 5, time.Minute)
 
-// 释放锁
+// Release the locks
 err = lock.Unlock()
 ```
 
-## 常见问题
+## FAQ
 
-### 局限和适用范围
+### Limitations and scope
 
-Redis-Lock 希望提供了一个简单、轻量、高性能的分布式锁实现。为了满足轻量、易用、高性能的定位，这个分布式锁在存储上依赖了 Redis 单节点。当 Redis 节点不可用（如宕机），将导致分布式锁不可用，因此不适用于对可用性有较高要求的场景。
+Redis-Lock aims to deliver a lightweight, easy-to-use, high-performance distributed lock. To keep that profile, it relies on a single Redis node for storage. When that Redis node goes down (for example, it crashes) the lock becomes unavailable, so it is not suited to workloads that demand strict availability.
 
-对于有严苛可用性标准的场景，比如集群选举，基于 Redis 多节点的 Redlock 算法实现、或者 ZooKeeper、ETCD 等基础设施更加合适，它们可以承受少数节点的宕机问题。当然，这些方案对开发复杂度、外部设施资源也有更多的要求，并且为了实现分布式协调算法而损耗一定的性能。
+For scenarios with hard availability requirements, such as cluster leader election, prefer a multi-node Redlock implementation or coordination systems like ZooKeeper and ETCD. They tolerate partial node failures but require more operational resources, higher development complexity, and some performance trade-offs to achieve their coordination guarantees.
+
+## License
+
+Redis-Lock is distributed under the MIT License. See [LICENSE](LICENSE) for details.

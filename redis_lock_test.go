@@ -41,7 +41,7 @@ func TestConcurrencySafety(t *testing.T) {
 	}
 
 	expected := 100
-	actual := 0 // 用多个协程不断地加1
+	actual := 0 // Incremented repeatedly by many goroutines
 
 	var wg sync.WaitGroup
 	for i := 0; i < expected; i++ {

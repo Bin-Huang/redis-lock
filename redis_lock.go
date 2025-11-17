@@ -9,15 +9,15 @@ import (
 	"github.com/go-redis/redis/v8"
 )
 
-// RedisLock 是基于 Redis 单节点的分布式锁
+// RedisLock is a distributed lock backed by a single Redis node.
 //
-//		// 初始化一个名为 lock-key 的锁，指定过期时间为 1 小时
+//		// Initialize a lock named lock-key with a 1 hour expiration
 //		lock := NewRedisLock(redisClient, 'lock-key', time.Hour)
 //
-//		// 尝试加锁并堵塞。以 5 秒为间隔、不断地尝试加锁，直到加锁成功、或超过 1 分钟报错
+//		// Retry every 5 seconds until the lock is acquired, or fail after 1 minute
 //		err := lock.Lock(time.Second * 5, time.Minute)
 //
-//		// 释放锁
+//		// Release the lock
 //		err = lock.Unlock()
 //
 type RedisLock struct {
@@ -28,7 +28,7 @@ type RedisLock struct {
 	rand   *rand.Rand
 }
 
-// NewRedisLock 初始化一个分布式锁，并指定过期时间（即加锁后的自动释放时间）
+// NewRedisLock initializes a distributed lock with the specified expiration (automatic release duration).
 func NewRedisLock(client *redis.Client, key string, expire time.Duration) *RedisLock {
 	seed := time.Now().UnixNano()
 	return &RedisLock{
@@ -40,16 +40,18 @@ func NewRedisLock(client *redis.Client, key string, expire time.Duration) *Redis
 	}
 }
 
-// Lock 以特定的时间间隔、不断地尝试加锁，直到加锁成功或者超时报错。其中，为了错开竞争，时间间隔会在 [50%, 150%) 区间随机波动。
+// Lock retries at the provided interval until the lock is acquired or the timeout elapses.
+// The interval jitters randomly within [50%, 150%) to reduce contention.
 func (l *RedisLock) Lock(attemptInterval time.Duration, timeout time.Duration) error {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	return l.LockWithContext(ctx, attemptInterval)
 }
 
-// LockWithContext 以特定的时间间隔、不断地尝试加锁，直到加锁成功。其中，为了错开竞争，时间间隔会在 [50%, 150%) 区间随机波动。
+// LockWithContext retries at the provided interval until the lock is acquired.
+// The interval jitters randomly within [50%, 150%) to reduce contention.
 func (l *RedisLock) LockWithContext(ctx context.Context, attemptInterval time.Duration) error {
-	// 等待时间在 [ interval * 50%, interval * 150% ] 区间之间随机获得，以防止多线程同时竞争导致的死锁
+	// The wait interval is randomly chosen between [interval * 50%, interval * 150%] to avoid deadlocks under heavy contention.
 	ticker := time.NewTicker(attemptInterval/2 + time.Duration(l.rand.Int63n(int64(attemptInterval))))
 	defer func() {
 		ticker.Stop()
@@ -66,7 +68,7 @@ func (l *RedisLock) LockWithContext(ctx context.Context, attemptInterval time.Du
 	}
 }
 
-// Unlock 释放锁
+// Unlock releases the lock.
 func (l *RedisLock) Unlock() error {
 	release := redis.NewScript(`
 		if redis.call("get",KEYS[1]) == ARGV[1]
@@ -76,7 +78,7 @@ func (l *RedisLock) Unlock() error {
 			return 0
 		end
 	`)
-	ctx := context.Background() // 在这个场景，解锁操作应该是不允许取消和超时的，所以直接使用 Backgroud
+	ctx := context.Background() // Unlocking shouldn't be cancelable or timed out here, so use Background directly.
 	_, err := release.Run(ctx, l.client, []string{l.key}, l.random).Result()
 	if err != nil {
 		return err
@@ -84,7 +86,8 @@ func (l *RedisLock) Unlock() error {
 	return nil
 }
 
-// AttemptLock 尝试加锁，并立即返回结果。只有在返回 true 的情况下，才认为加锁成功。
+// AttemptLock tries to acquire the lock once and returns immediately.
+// It only succeeds when the return value is true.
 func (l *RedisLock) AttemptLock(ctx context.Context) (bool, error) {
 	return l.client.SetNX(ctx, l.key, l.random, l.expire).Result()
 }
